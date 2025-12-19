@@ -3,219 +3,40 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cyclic Word Solver</title>
+    <title>Professional Cyclic Solver</title>
     <style>
-        :root {
-            --bg: #f8fafc;
-            --card-bg: #ffffff;
-            --primary: #2563eb;
-            --text: #1e293b;
-            --border: #e2e8f0;
-            --success: #10b981;
-            --error: #ef4444;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-            background-color: var(--bg);
-            color: var(--text);
-            display: flex;
-            justify-content: center;
-            padding: 40px 20px;
-            margin: 0;
-        }
-
-        .container {
-            background: var(--card-bg);
-            width: 100%;
-            max-width: 600px;
-            padding: 2rem;
-            border-radius: 12px;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-            border: 1px solid var(--border);
-        }
-
-        h1 { margin-top: 0; font-size: 1.5rem; color: var(--primary); display: flex; justify-content: space-between; align-items: center; }
-
-        .status { font-size: 0.85rem; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 20px; background: #f1f5f9; }
-        .dot { width: 10px; height: 10px; border-radius: 50%; background: #cbd5e1; }
-        .dot.green { background: var(--success); box-shadow: 0 0 8px var(--success); }
-        .dot.red { background: var(--error); }
-
-        .input-group { margin-top: 1.5rem; }
-        label { display: block; font-weight: 600; margin-bottom: 0.5rem; color: #475569; }
-        
-        input[type="text"] {
-            width: 100%;
-            padding: 14px;
-            font-size: 1.2rem;
-            border: 2px solid var(--border);
-            border-radius: 8px;
-            box-sizing: border-box;
-            font-family: 'Courier New', monospace;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-        }
-
-        button {
-            background-color: var(--primary);
-            color: white;
-            border: none;
-            padding: 14px;
-            border-radius: 8px;
-            font-weight: 700;
-            cursor: pointer;
-            width: 100%;
-            margin-top: 1rem;
-            font-size: 1rem;
-            transition: transform 0.1s, background 0.2s;
-        }
-        button:hover { background-color: #1d4ed8; }
-        button:active { transform: scale(0.98); }
-        button:disabled { background-color: #94a3b8; cursor: not-allowed; }
-
-        #results { margin-top: 2rem; }
-        .result-item {
-            background: #eff6ff;
-            border-left: 5px solid var(--primary);
-            padding: 1rem;
-            margin-bottom: 0.75rem;
-            border-radius: 4px;
-            font-family: 'Courier New', monospace;
-            font-size: 1.2rem;
-            font-weight: bold;
-            display: flex;
-            justify-content: space-between;
-        }
-
-        .error-banner {
-            background: #fef2f2;
-            color: var(--error);
-            padding: 1rem;
-            border-radius: 8px;
-            border: 1px solid #fecaca;
-            margin-bottom: 1rem;
-            font-size: 0.9rem;
-        }
+        :root { --bg: #f8fafc; --primary: #2563eb; --text: #1e293b; --success: #10b981; }
+        body { font-family: sans-serif; background: var(--bg); color: var(--text); display: flex; justify-content: center; padding: 40px; }
+        .container { background: white; width: 100%; max-width: 600px; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .status { font-size: 0.8rem; display: flex; align-items: center; gap: 5px; float: right; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; background: #cbd5e1; }
+        .dot.green { background: var(--success); }
+        input { width: 100%; padding: 12px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 8px; font-family: monospace; text-transform: uppercase; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        button:disabled { background: #94a3b8; }
+        #results { margin-top: 20px; }
+        .card { background: #eff6ff; padding: 15px; border-radius: 8px; margin-bottom: 10px; font-family: monospace; font-weight: bold; border-left: 4px solid var(--primary); }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>
-        Cyclic Solver
-        <div class="status">
-            <div id="statusDot" class="dot"></div>
-            <span id="statusText">Initializing...</span>
-        </div>
-    </h1>
-
-    <div id="errorLog" class="error-banner" style="display:none;"></div>
-
-    <div class="input-group">
-        <label for="inputStr">Enter 9-Letter Sequence (Use ? for unknown)</label>
-        <input type="text" id="inputStr" placeholder="CERTNESN?" maxlength="10" autocomplete="off" spellcheck="false">
-        <p style="font-size: 0.8rem; color: #64748b; margin-top: 8px;">* Note: "IJ" is handled as 1 character.</p>
-    </div>
-
-    <button id="solveBtn" onclick="runSolver()" disabled>Loading Wordlist...</button>
-
+    <div class="status"><div id="dot" class="dot"></div><span id="stat">Loading...</span></div>
+    <h1>Cyclic Solver</h1>
+    
+    <input type="text" id="input" placeholder="CERTNESN?" maxlength="10">
+    <button id="btn" onclick="solve()" disabled>Loading Wordlist...</button>
     <div id="results"></div>
 </div>
 
 <script>
-    const WORDLIST_URL = 'words_9char.txt';
-    let wordDatabase = [];
+    const FILE = 'words_9char.txt';
+    let words = [];
 
-    // Initialize: Load the text file
-    (async function init() {
-        const dot = document.getElementById('statusDot');
-        const text = document.getElementById('statusText');
-        const btn = document.getElementById('solveBtn');
-        const log = document.getElementById('errorLog');
-
-        try {
-            const response = await fetch(WORDLIST_URL);
-            if (!response.ok) throw new Error(`HTTP ${response.status}: Failed to load ${WORDLIST_URL}`);
-            
-            const rawData = await response.text();
-            wordDatabase = rawData.split(/\r?\n/)
-                                   .map(w => w.trim().toUpperCase())
-                                   .filter(w => w.length > 0);
-
-            if (wordDatabase.length === 0) throw new Error("Wordlist is empty.");
-
-            dot.className = 'dot green';
-            text.innerText = `${wordDatabase.length.toLocaleString()} words loaded`;
-            btn.disabled = false;
-            btn.innerText = "SOLVE";
-        } catch (err) {
-            dot.className = 'dot red';
-            text.innerText = "Error";
-            log.innerText = err.message;
-            log.style.display = 'block';
-            btn.innerText = "Unavailable";
-        }
-    })();
-
-    function runSolver() {
-        const query = document.getElementById('inputStr').value.toUpperCase().replace(/\s/g, '');
-        const resultsArea = document.getElementById('results');
-        resultsArea.innerHTML = '';
-
-        if (!query) return;
-
-        // Internal normalization: Treat "IJ" as a single character '1' for math purposes
-        const normalizedQuery = query.replace(/IJ/g, '1').split('');
-        const REQUIRED_LEN = 9;
-
-        if (normalizedQuery.length !== REQUIRED_LEN) {
-            resultsArea.innerHTML = `<div class="error-banner">Error: Input must result in exactly 9 characters (Current: ${normalizedQuery.length}). Remember 'IJ' counts as 1.</div>`;
-            return;
-        }
-
-        const matches = [];
-
-        wordDatabase.forEach(word => {
-            // Normalize dictionary word similarly
-            const normalizedWord = word.replace(/IJ/g, '1');
-            if (normalizedWord.length !== REQUIRED_LEN) return;
-
-            // Cyclic check: Try all 9 starting positions
-            for (let shift = 0; shift < REQUIRED_LEN; shift++) {
-                let isMatch = true;
-                
-                for (let i = 0; i < REQUIRED_LEN; i++) {
-                    const dictChar = normalizedWord[(shift + i) % REQUIRED_LEN];
-                    const inputChar = normalizedQuery[i];
-
-                    if (inputChar !== '?' && inputChar !== dictChar) {
-                        isMatch = false;
-                        break;
-                    }
-                }
-
-                if (isMatch) {
-                    matches.push(word);
-                    break; // Found a match for this word, move to next dictionary entry
-                }
-            }
-        });
-
-        if (matches.length === 0) {
-            resultsArea.innerHTML = '<div class="result-item">No matches found.</div>';
-        } else {
-            matches.sort().forEach(m => {
-                resultsArea.innerHTML += `<div class="result-item"><span>${m}</span></div>`;
-            });
-        }
-    }
-
-    // Allow "Enter" key to trigger search
-    document.getElementById('inputStr').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter' && !document.getElementById('solveBtn').disabled) runSolver();
-    });
-</script>
-
-</body>
-</html>
+    // Init: Load list
+    fetch(FILE).then(r => r.text()).then(t => {
+        words = t.split(/\r?\n/).map(w => w.trim().toUpperCase()).filter(w => w.length > 0);
+        document.getElementById('dot').classList.add('green');
+        document.getElementById('stat').innerText = words.length + " words";
+        document.getElementById('btn').disabled = false;
+        document.getElementById('btn').innerText = "SOLVE";
