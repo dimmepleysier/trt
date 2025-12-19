@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>9-tile Dutch solver (IJ = 1)</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 20px; max-width: 900px; }
+    input { padding: 10px; font-size: 16px; width: min(640px, 100%); }
+    button { padding: 10px 14px; font-size: 16px; cursor: pointer; }
+    .row { display:flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+    .muted { color:#666; }
+    .ok { color:#1a7f37; }
+    .bad { color:#b42318; }
+    textarea { width: min(860px, 100%); height: 240px; padding: 10px; font-size: 14px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    code { background:#f6f8fa; padding: 1px 6px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <h2>9-tile Dutch word solver <span class="muted">(IJ counts as 1 tile)</span></h2>
+
+  <div class="muted">
+    Type 9 tiles (letters), including exactly one <code>?</code>. Tiles are cyclical and can match LTR or RTL.
+    <br/>Write <code>IJ</code> literally to mean the single tile IJ.
+  </div>
+
+  <div class="row">
+    <input id="pattern" placeholder="Example: A B C D E F G H ?  (spaces ok)  /  ...IJ...?... " />
+    <button id="solveBtn" disabled>Solve</button>
+    <button id="clearBtn">Clear</button>
+  </div>
+
+  <div id="status" class="muted">Loading word list…</div>
+
+  <div class="row">
+    <label class="muted"><input type="checkbox" id="onlyIj"> Only words containing IJ</label>
+    <label class="muted"><input type="checkbox" id="uniqueOnly"> Show unique words only</label>
+    <label class="muted">Limit <input type="number" id="limit" value="500" min="10" max="50000" style="width:100px; padding:6px;"></label>
+  </div>
+
+  <textarea id="out" class="mono" readonly placeholder="Results will appear here..."></textarea>
+
+<script>
+(() => {
+  const WORDS_FILE = "words_9char.txt";
+  const N = 9;
+
+  const elPattern = document.getElementById("pattern");
+  const elSolve = document.getElementById("solveBtn");
+  const elClear = document.getElementById("clearBtn");
+  const elStatus = document.getElementById("status");
+  const elOut = document.getElementById("out");
+  const elOnlyIj = document.getElementById("onlyIj");
+  const elUniqueOnly = document.getElementById("uniqueOnly");
+  const elLimit = document.getElementById("limit");
+
+  let WORDS = [];
+
+  // --- Tile helpers (IJ as a single tile) ---
+  // We represent IJ internally as the token "IJ" (not split into I,J).
+  function toTilesFromText(input) {
+    const s = (input || "")
+      .toUpperCase()
+      .replace(/\s+/g, "")       // remove spaces
+      .replace(/[^A-Z?]/g, "");  // keep only letters + ?
+
+    const tiles = [];
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i];
+      const n = s[i + 1] || "";
+      if (c === "I" && n === "J") { tiles.push("IJ"); i++; }
+      else tiles.push(c);
+    }
+    return tiles;
+  }
+
+  function tilesToPretty(tiles) {
+    return tiles.map(t => t === "IJ" ? "IJ" : t).join(" ");
+  }
+
+  function wordToTiles(word) {
+    return toTilesFromText(String(word || ""));
+  }
+
+  function containsIJTiles(tiles) {
+    return tiles.includes("IJ");
+  }
+
+  // Cycle index for LTR and RTL with shift
+  // dir = +1 (LTR), -1 (RTL)
+  function atCyclic(tiles, shift, i, dir) {
+    let idx = (dir === 1) ? (shift + i) : (shift - i);
+    idx %= tiles.length;
+    if (idx < 0) idx += tiles.length;
+    return tiles[idx];
+  }
+
+  // Match pattern tiles against word tiles under some shift+direction
+  function matchWord(wordTiles, patternTiles, dir) {
+    for (let shift = 0; shift < N; shift++) {
+      let ok = true;
+      for (let i = 0; i < N; i++) {
+        const p = patternTiles[i];
+        const w = atCyclic(wordTiles, shift, i, dir);
+        if (p !== "?" && p !== w) { ok = false; break; }
+      }
+      if (ok) return shift; // first shift that works
+    }
+    return null;
+  }
+
+  function solve() {
+    const patternTiles = toTilesFromText(elPattern.value);
+
+    // Validate: exactly 9 tiles
+    if (patternTiles.length !== N) {
+      elStatus.innerHTML = `<span class="bad">Need exactly ${N} tiles after counting IJ as one. You currently have ${patternTiles.length}.</span>`;
+      elOut.value = "";
+      return;
+    }
+
+    const qPositions = patternTiles.map((t, idx) => t === "?" ? idx : -1).filter(i => i >= 0);
+    if (qPositions.length !== 1) {
+      elStatus.innerHTML = `<span class="bad">Pattern must contain exactly one '?' tile. You have ${qPositions.length}.</span>`;
+      elOut.value = "";
+      return;
+    }
+    const qPos = qPositions[0];
+
+    const onlyIj = elOnlyIj.checked;
+    const uniqueOnly = elUniqueOnly.checked;
+    const limit = Math.max(10, Math.min(50000, parseInt(elLimit.value || "500", 10)));
+
+    const t0 = performance.now();
+    const hits = [];
+    const seen = new Set();
+
+    for (const w of WORDS) {
+      const wordTiles = wordToTiles(w);
+      if (wordTiles.length !== N) continue;
+
+      if (onlyIj && !containsIJTiles(wordTiles)) continue;
+
+      // Try both directions
+      for (const dir of [1, -1]) {
+        const shift = matchWord(wordTiles, patternTiles, dir);
+        if (shift === null) continue;
+
+        const missing = atCyclic(wordTiles, shift, qPos, dir);
+
+        const key = w; // uniqueness by actual word text
+        if (uniqueOnly) {
+          if (seen.has(key)) break;
+          seen.add(key);
+        }
+
+        hits.push({
+          word: w,
+          missing,
+          dir: dir === 1 ? "LTR" : "RTL",
+          shift
+        });
+        break; // stop after first direction match (keeps output tidy)
+      }
+
+      if (hits.length >= limit) break;
+    }
+
+    const t1 = performance.now();
+
+    if (hits.length === 0) {
+      elStatus.innerHTML = `<span class="bad">No matches.</span>`;
+      elOut.value = "";
+      return;
+    }
+
+    hits.sort((a, b) => a.word.localeCompare(b.word) || a.dir.localeCompare(b.dir));
+
+    elStatus.innerHTML =
+      `<span class="ok">Matches: ${hits.length}</span> ` +
+      `<span class="muted">| Pattern: ${tilesToPretty(patternTiles)} | ${ (t1 - t0).toFixed(1) } ms</span>`;
+
+    elOut.value = hits.map(h =>
+      `${h ––––––––––––}` // guard: will be replaced below
+    ).join("\n");
+  }
+
+  // small helper because some browsers choke on the long dash in template above
+  function formatHits(hits) {
+    return hits.map(h => `${h.word}   ?=${h.missing}   (${h.dir}, shift=${h.shift})`).join("\n");
+  }
+
+  // Patch solve() output line generation cleanly
+  const _solve = solve;
+  window.__solveInternal = () => {
+    // re-run solve but using formatHits
+    const patternTiles = toTilesFromText(elPattern.value);
+
+    if (patternTiles.length !== N) {
+      elStatus.innerHTML = `<span class="bad">Need exactly ${N} tiles after counting IJ as one. You currently have ${patternTiles.length}.</span>`;
+      elOut.value = "";
+      return;
+    }
+    const qPositions = patternTiles.map((t, idx) => t === "?" ? idx : -1).filter(i => i >= 0);
+    if (qPositions.length !== 1) {
+      elStatus.innerHTML = `<span class="bad">Pattern must contain exactly one '?' tile. You have ${qPositions.length}.</span>`;
+      elOut.value = "";
+      return;
+    }
+    const qPos = qPositions[0];
+
+    const onlyIj = elOnlyIj.checked;
+    const uniqueOnly = elUniqueOnly.checked;
+    const limit = Math.max(10, Math.min(50000, parseInt(elLimit.value || "500", 10)));
+
+    const t0 = performance.now();
+    const hits = [];
+    const seen = new Set();
+
+    for (const w of WORDS) {
+      const wordTiles = wordToTiles(w);
+      if (wordTiles.length !== N) continue;
+      if (onlyIj && !containsIJTiles(wordTiles)) continue;
+
+      for (const dir of [1, -1]) {
+        const shift = matchWord(wordTiles, patternTiles, dir);
+        if (shift === null) continue;
+
+        const missing = atCyclic(wordTiles, shift, qPos, dir);
+
+        if (uniqueOnly) {
+          if (seen.has(w)) break;
+          seen.add(w);
+        }
+
+        hits.push({ word: w, missing, dir: dir === 1 ? "LTR" : "RTL", shift });
+        break;
+      }
+      if (hits.length >= limit) break;
+    }
+
+    const t1 = performance.now();
+
+    if (hits.length === 0) {
+      elStatus.innerHTML = `<span class="bad">No matches.</span>`;
+      elOut.value = "";
+      return;
+    }
+
+    hits.sort((a, b) => a.word.localeCompare(b.word) || a.dir.localeCompare(b.dir));
+
+    elStatus.innerHTML =
+      `<span class="ok">Matches: ${hits.length}</span> ` +
+      `<span class="muted">| Pattern: ${tilesToPretty(patternTiles)} | ${ (t1 - t0).toFixed(1) } ms</span>`;
+
+    elOut.value = formatHits(hits);
+  };
+
+  // UI wiring
+  elSolve.addEventListener("click", window.__solveInternal);
+  elClear.addEventListener("click", () => {
+    elPattern.value = "";
+    elOut.value = "";
+    elStatus.textContent = "Cleared.";
+  });
+  elPattern.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") window.__solveInternal();
+  });
+
+  async function loadWords() {
+    elSolve.disabled = true;
+    elStatus.textContent = `Loading ${WORDS_FILE}…`;
+    try {
+      const resp = await fetch(`${WORDS_FILE}?v=${Date.now()}`, { cache: "no-store" });
+      if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+      const text = await resp.text();
+
+      WORDS = text.split(/\r?\n/)
+        .map(s => s.trim())
+        .filter(Boolean);
+
+      // sanity: keep only items that are 9 tiles (IJ as 1)
+      WORDS = WORDS.filter(w => wordToTiles(w).length === N);
+
+      elStatus.innerHTML = `<span class="ok">Loaded ${WORDS.length} words.</span> <span class="muted">Ready.</span>`;
+      elSolve.disabled = false;
+    } catch (err) {
+      console.error(err);
+      elStatus.innerHTML =
+        `<span class="bad">Failed to load ${WORDS_FILE}.</span> ` +
+        `<span class="muted">Put it in the same folder as index.html. (${err.message || err})</span>`;
+      elSolve.disabled = true;
+    }
+  }
+
+  loadWords();
+})();
+</script>
+</body>
+</html>
